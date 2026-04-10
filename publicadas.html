@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizador de Licitaciones | Región del Maule</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        slate: { 850: '#1e293b', 900: '#0f172a', 950: '#020617' },
+                        primary: { 50: '#eef2ff', 100: '#e0e7ff', 500: '#6366f1', 600: '#4f46e5', 700: '#4338ca', 900: '#312e81' },
+                        brand: { DEFAULT: '#00306b' }
+                    },
+                    boxShadow: {
+                        'soft': '0 4px 20px -2px rgba(0, 0, 0, 0.05)',
+                    },
+                    animation: {
+                        'blob': 'blob 7s infinite',
+                        'fade-in': 'fadeIn 0.5s ease-out forwards',
+                    },
+                    keyframes: {
+                        blob: {
+                            '0%': { transform: 'translate(0px, 0px) scale(1)' },
+                            '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+                            '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+                            '100%': { transform: 'translate(0px, 0px) scale(1)' },
+                        },
+                        fadeIn: { 
+                            from: { opacity: 0, transform: 'translateY(10px)' }, 
+                            to: { opacity: 1, transform: 'translateY(0)' } 
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <script type="importmap">
+    {
+        "imports": {
+            "react": "https://esm.sh/react@18.2.0",
+            "react-dom": "https://esm.sh/react-dom@18.2.0",
+            "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "lucide-react": "https://esm.sh/lucide-react@0.263.1?deps=react@18.2.0,react-dom@18.2.0"
+        }
+    }
+    </script>
+
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
+        
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+        .shimmer {
+            background: linear-gradient(90deg, #f1f5f9 0%, #e2e8f0 50%, #f1f5f9 100%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+        /* Loader inicial visible */
+        #root:empty::before {
+            content: 'Iniciando sistema...';
+            display: flex;
+            height: 100vh;
+            width: 100%;
+            justify-content: center;
+            align-items: center;
+            color: #64748b;
+            font-size: 1.2rem;
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+    </style>
+</head>
+<body class="text-slate-800 antialiased h-screen overflow-hidden selection:bg-indigo-100 selection:text-indigo-900">
+    
+    <div id="root"></div>
+
+    <script type="text/babel" data-type="module">
+        import React, { useState, useEffect, useMemo, useRef } from 'react';
+        import { createRoot } from 'react-dom/client';
+        import { 
+            Database, Calendar, ChevronDown, Check, Search, Building2, 
+            X, ChevronRight, ChevronLeft, Wifi, WifiOff, ArrowRight, ArrowLeft,
+            ArrowUpRight, SlidersHorizontal, ChevronUp, Activity, Tags, Clock, Users
+        } from 'lucide-react';
+
+        // ==========================================
+        // CONFIGURACIÓN DE RED Y DATOS
+        // ==========================================
+        const POWER_AUTOMATE_URL = "https://default6780ef6e6e8c4ac2b2bc18eb02f617.a6.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/01f75e70ea93481f9e0c8c83ef3ccbf4/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=Evt0WpS_P7ozmMHufyjL--_Jq-54iNIM_FE0bLnnBe4"; 
+
+        const MONTH_NAMES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        const SHORT_MONTHS = { 'ene': 0, 'feb': 1, 'mar': 2, 'abr': 3, 'may': 4, 'jun': 5, 'jul': 6, 'ago': 7, 'sep': 8, 'oct': 9, 'nov': 10, 'dic': 11 };
+
+        // ==========================================
+        // COMPONENTES UI
+        // ==========================================
+        const SkeletonCard = () => (
+            <div className="bg-white rounded-2xl p-6 shadow-soft border border-slate-100">
+                <div className="flex justify-between items-start">
+                    <div className="w-full">
+                        <div className="h-3 w-24 bg-slate-100 rounded mb-3 shimmer"></div>
+                        <div className="h-8 w-32 bg-slate-100 rounded mb-2 shimmer"></div>
+                        <div className="h-3 w-20 bg-slate-100 rounded shimmer"></div>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-slate-100 shimmer"></div>
+                </div>
+            </div>
+        );
+
+        const SkeletonTable = () => (
+            <div className="bg-white rounded-2xl shadow-soft border border-slate-100 overflow-hidden">
+                <div className="p-5 border-b border-slate-100 bg-slate-50/50">
+                    <div className="h-5 w-48 bg-slate-200 rounded shimmer"></div>
+                </div>
+                <div className="p-6 space-y-4">
+                    {[1,2,3,4,5,6].map(i => (
+                        <div key={i} className="flex gap-4">
+                            <div className="h-4 w-1/4 bg-slate-100 rounded shimmer"></div>
+                            <div className="h-4 w-1/4 bg-slate-100 rounded shimmer"></div>
+                            <div className="h-4 w-1/6 bg-slate-100 rounded shimmer"></div>
+                            <div className="h-4 w-1/6 bg-slate-100 rounded shimmer"></div>
+                            <div className="h-4 w-1/6 bg-slate-100 rounded shimmer"></div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+
+        const KPICard = ({ title, value, subtext, icon: Icon, colorClass, bgClass, delay = 0 }) => (
+            <div className="bg-white rounded-2xl p-4 shadow-soft border border-slate-100 hover:border-indigo-100 hover:shadow-lg hover:shadow-indigo-500/5 transition-all duration-300 group relative overflow-hidden animate-fade-in" style={{ animationDelay: `${delay}ms` }}>
+                <div className={`absolute -right-6 -top-6 w-24 h-24 rounded-full opacity-10 group-hover:opacity-20 transition-opacity duration-500 ${bgClass}`}></div>
+                <div className="flex justify-between items-start relative z-10">
+                    <div>
+                        <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-1 flex items-center gap-2">{title}</p>
+                        <h3 className="text-2xl font-bold text-slate-800 tracking-tight group-hover:text-indigo-700 transition-colors">{value}</h3>
+                        {subtext && (<p className="text-[10px] text-slate-400 mt-1 flex items-center gap-1 font-medium">{subtext}</p>)}
+                    </div>
+                    <div className={`p-3 rounded-2xl ${bgClass} group-hover:scale-110 group-hover:rotate-3 transition-transform duration-300 shadow-inner`}>
+                        <Icon size={20} className={colorClass} strokeWidth={2.5} />
+                    </div>
+                </div>
+            </div>
+        );
+
+        const MultiSelect = ({ options, selected, onChange, label, icon: Icon }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            const containerRef = useRef(null);
+            
+            useEffect(() => {
+                const handleClickOutside = (e) => { if (containerRef.current && !containerRef.current.contains(e.target)) setIsOpen(false); };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+            
+            const isAllSelected = selected.length === options.length && options.length > 0;
+            const toggleOption = (opt) => selected.includes(opt) ? onChange(selected.filter(i => i !== opt)) : onChange([...selected, opt]);
+            
+            const getSummary = () => {
+                if (selected.length === 0 || (isAllSelected && options.length > 0)) return `Todos`;
+                if (selected.length === 1) return selected[0];
+                return `${selected.length} seleccionados`;
+            };
+            
+            return (
+                <div className="relative group" ref={containerRef}>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">{label}</label>
+                    <button onClick={() => setIsOpen(!isOpen)} className={`w-full bg-white border ${isOpen ? 'border-indigo-500 ring-1 ring-indigo-500/30' : 'border-slate-200 hover:border-slate-300'} rounded-xl py-2.5 px-3 text-sm flex justify-between items-center transition-all text-slate-700 shadow-sm`}>
+                        <div className="flex items-center gap-2.5 overflow-hidden">{Icon && <Icon size={16} className={`${isOpen ? 'text-indigo-500' : 'text-slate-400'} flex-shrink-0 transition-colors`} />}<span className="truncate font-medium">{getSummary()}</span></div>
+                        <ChevronDown size={16} className={`text-slate-400 transition-transform duration-300 ${isOpen ? 'rotate-180 text-indigo-500' : ''}`} />
+                    </button>
+                    {isOpen && (
+                        <div className="absolute z-50 mt-2 w-full bg-white border border-slate-100 rounded-xl shadow-xl shadow-slate-900/10 max-h-64 overflow-y-auto custom-scrollbar animate-fade-in">
+                            <div className="sticky top-0 bg-slate-50/95 backdrop-blur-md border-b border-slate-100 p-2 cursor-pointer hover:bg-slate-100 transition-colors z-10" onClick={() => isAllSelected ? onChange([]) : onChange([...options])}>
+                                <div className="flex items-center gap-3 px-2 py-1"><div className={`w-4 h-4 rounded border flex items-center justify-center transition-all duration-200 ${isAllSelected ? 'bg-indigo-600 border-indigo-600 shadow-sm' : 'bg-white border-slate-300'}`}>{isAllSelected && <Check size={12} className="text-white" strokeWidth={3} />}</div><span className="text-sm font-bold text-indigo-900">Seleccionar Todo</span></div>
+                            </div>
+                            <div className="p-1.5">{options.map(opt => (<div key={opt} className="flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer hover:bg-indigo-50 transition-colors" onClick={() => toggleOption(opt)}><div className={`w-4 h-4 rounded border flex items-center justify-center transition-all duration-200 ${selected.includes(opt) ? 'bg-indigo-500 border-indigo-500 shadow-sm' : 'bg-white border-slate-300'}`}>{selected.includes(opt) && <Check size={10} className="text-white" strokeWidth={3} />}</div><span className={`text-sm truncate ${selected.includes(opt) ? 'text-indigo-900 font-medium' : 'text-slate-600'}`}>{opt}</span></div>))}</div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const PeriodSelector = ({ data, selectedPeriods, onChange, label, yearKey = 'anio', monthKey = 'mes', icon: Icon }) => {
+            const [isOpen, setIsOpen] = useState(false);
+            const [expandedYears, setExpandedYears] = useState([]);
+            const containerRef = useRef(null);
+            
+            const treeData = useMemo(() => {
+                const tree = {};
+                if (!data) return [];
+                data.forEach(item => {
+                    const y = item[yearKey]; const m = item[monthKey];
+                    if (!item || y === 'N/A' || m === 'N/A' || !y || !m) return;
+                    if (!tree[y]) tree[y] = new Set();
+                    tree[y].add(m);
+                });
+                return Object.keys(tree).sort((a, b) => b.localeCompare(a)).map(year => ({ year, months: Array.from(tree[year]).sort((a, b) => MONTH_NAMES.indexOf(a) - MONTH_NAMES.indexOf(b)) }));
+            }, [data, yearKey, monthKey]);
+            
+            useEffect(() => {
+                const handleClickOutside = (e) => { if (containerRef.current && !containerRef.current.contains(e.target)) setIsOpen(false); };
+                document.addEventListener('mousedown', handleClickOutside);
+                return () => document.removeEventListener('mousedown', handleClickOutside);
+            }, []);
+            
+            const toggleYear = (e, year) => { e.stopPropagation(); setExpandedYears(prev => prev.includes(year) ? prev.filter(y => y !== year) : [...prev, year]); };
+            const isYearFull = (y, ms) => selectedPeriods[y] && ms.every(m => selectedPeriods[y].includes(m));
+            const isYearPartial = (y, ms) => selectedPeriods[y] && selectedPeriods[y].length > 0 && selectedPeriods[y].length < ms.length;
+            const isAll = treeData.length > 0 && treeData.every(t => isYearFull(t.year, t.months));
+            
+            const handleSelectAll = () => { if (isAll) onChange({}); else { const all = {}; treeData.forEach(t => all[t.year] = [...t.months]); onChange(all); } };
+            const handleYearClick = (y, ms) => { const next = { ...selectedPeriods }; if (isYearFull(y, ms)) delete next[y]; else next[y] = [...ms]; onChange(next); };
+            const handleMonthClick = (y, m) => { const next = { ...selectedPeriods }; const current = next[y] || []; if (current.includes(m)) { next[y] = current.filter(cm => cm !== m); if (next[y].length === 0) delete next[y]; } else { next[y] = [...current, m]; } onChange(next); };
+            
+            const getSummary = () => { const years = Object.keys(selectedPeriods); if (years.length === 0 || isAll) return 'Histórico Completo'; if (years.length === 1) return `${years[0]} (${selectedPeriods[years[0]].length} meses)`; return `${years.length} años seleccionados`; };
+
+            return (
+                <div className="relative group" ref={containerRef}>
+                     <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1.5 ml-1">{label}</label>
+                     <button onClick={() => setIsOpen(!isOpen)} className={`w-full bg-white border ${isOpen ? 'border-indigo-500 ring-1 ring-indigo-500/30' : 'border-slate-200 hover:border-slate-300'} rounded-xl py-2.5 px-3 text-sm flex justify-between items-center transition-all text-slate-700 shadow-sm`}>
+                        <div className="flex items-center gap-2.5 truncate"><Icon size={16} className={`${isOpen ? 'text-indigo-500' : 'text-slate-400'} flex-shrink-0 transition-colors`} /><span className="truncate font-medium">{getSummary()}</span></div>
+                        <ChevronDown size={16} className={`text-slate-400 transition-transform duration-300 ${isOpen ? 'rotate-180 text-indigo-500' : ''}`} />
+                    </button>
+                    {isOpen && (
+                        <div className="absolute z-50 mt-2 w-full bg-white border border-slate-100 rounded-xl shadow-xl shadow-slate-900/10 max-h-80 overflow-y-auto custom-scrollbar p-2 animate-fade-in">
+                             <div className="mb-2 px-2 py-2 bg-slate-50 rounded-lg cursor-pointer flex items-center gap-2 hover:bg-slate-100 transition-colors" onClick={handleSelectAll}><div className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${isAll ? 'bg-indigo-600 border-indigo-600' : 'bg-white border-slate-300'}`}>{isAll && <Check size={12} className="text-white" strokeWidth={3} />}</div><span className="text-sm font-bold text-slate-700">Seleccionar Todo</span></div>
+                            {treeData.map(({ year, months }) => {
+                                const expanded = expandedYears.includes(year); const full = isYearFull(year, months); const partial = isYearPartial(year, months);
+                                return (
+                                    <div key={year} className="mb-1">
+                                        <div className="flex items-center px-2 py-1.5 hover:bg-slate-50 rounded-lg transition-colors group/year">
+                                            <div className={`w-4 h-4 mr-3 rounded border flex items-center justify-center cursor-pointer transition-all ${full ? 'bg-indigo-600 border-indigo-600' : partial ? 'bg-indigo-100 border-indigo-400' : 'bg-white border-slate-300 group-hover/year:border-indigo-300'}`} onClick={() => handleYearClick(year, months)}>{full && <Check size={12} className="text-white" strokeWidth={3} />}{partial && <div className="w-2 h-2 bg-indigo-600 rounded-full" />}</div>
+                                            <span className="flex-grow text-sm font-medium text-slate-700 cursor-pointer" onClick={(e) => toggleYear(e, year)}>{year}</span>
+                                            <div onClick={(e) => toggleYear(e, year)} className="p-1 hover:bg-slate-200 rounded cursor-pointer text-slate-400 hover:text-indigo-500 transition-colors">{expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}</div>
+                                        </div>
+                                        {expanded && (<div className="ml-6 pl-3 border-l-2 border-indigo-100 mt-1 space-y-1">{months.map(m => { const isSel = selectedPeriods[year]?.includes(m); return (<div key={`${year}-${m}`} className="flex items-center px-2 py-1.5 cursor-pointer hover:bg-indigo-50 rounded-md transition-colors" onClick={() => handleMonthClick(year, m)}><div className={`w-3.5 h-3.5 mr-2 rounded border flex items-center justify-center transition-all ${isSel ? 'bg-indigo-500 border-indigo-500' : 'bg-white border-slate-300'}`}>{isSel && <Check size={10} className="text-white" strokeWidth={3} />}</div><span className="text-xs text-slate-600">{m}</span></div>) })}</div>)}
+                                    </div>
+                                )
+                            })}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // --- COMPONENTE: PORTADA ---
+        const LandingPage = ({ onEnter }) => {
+            return (
+                <div className="h-screen w-full bg-brand relative overflow-hidden flex flex-col items-center justify-center text-white font-sans">
+                    <div className="absolute top-0 left-0 w-full h-full overflow-hidden z-0">
+                        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-indigo-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-blob"></div>
+                        <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-purple-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-blob animation-delay-2000"></div>
+                        <div className="absolute -bottom-32 left-1/2 w-96 h-96 bg-blue-600 rounded-full mix-blend-multiply filter blur-[128px] opacity-20 animate-blob animation-delay-4000"></div>
+                        <div className="absolute inset-0 bg-slate-900/20"></div>
+                    </div>
+
+                    <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
+                        <div className="mb-8 inline-flex p-6 bg-white rounded-3xl shadow-2xl shadow-indigo-500/20 animate-fade-in">
+                            <img src="https://cchc.cl/documents/431409/0/logoCChC.png/002fea99-2039-beec-02a7-a92335532d6f?t=1695346405910" alt="CChC Maule" className="h-16 w-auto object-contain" />
+                        </div>
+
+                        <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight mb-4 text-white animate-fade-in" style={{animationDelay: '100ms'}}>
+                            Visualizador de Licitaciones
+                        </h1>
+                        
+                        <p className="text-lg md:text-xl text-indigo-100 font-light tracking-wide mb-10 animate-fade-in" style={{animationDelay: '200ms'}}>
+                            Detalle de licitaciones publicadas o disponibles <br className="hidden md:block"/> para ofertar en la Región del Maule.
+                        </p>
+
+                        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center animate-fade-in" style={{animationDelay: '300ms'}}>
+                            <button onClick={onEnter} className="group relative px-8 py-4 bg-white text-indigo-950 font-bold rounded-xl shadow-xl shadow-indigo-500/20 hover:shadow-indigo-500/40 hover:scale-[1.02] transition-all duration-300 flex items-center gap-3 overflow-hidden">
+                                <span className="relative z-10">VER LICITACIONES</span>
+                                <ArrowRight className="relative z-10 w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                                <div className="absolute inset-0 bg-gradient-to-r from-indigo-50 to-white opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // ==========================================
+        // D. DASHBOARD PRINCIPAL
+        // ==========================================
+        const Dashboard = ({ onBack }) => {
+            const [data, setData] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [error, setError] = useState(null);
+            const [isLive, setIsLive] = useState(false); 
+            
+            // Estados para los filtros
+            const [showFilters, setShowFilters] = useState(true);
+            const [selectedOrganismos, setSelectedOrganismos] = useState([]);
+            const [selectedTipos, setSelectedTipos] = useState([]);
+            const [selectedPeriodsPub, setSelectedPeriodsPub] = useState({});
+            const [selectedPeriodsCierre, setSelectedPeriodsCierre] = useState({});
+            const [searchTerm, setSearchTerm] = useState('');
+
+            const [currentPage, setCurrentPage] = useState(1);
+            const itemsPerPage = 10; 
+
+            // Mapeo de siglas a Tipos (ChileCompra)
+            const mapTipos = {
+                'L1': 'Licitación Pública (< 100 UTM)',
+                'LE': 'Licitación Pública (100 - 1.000 UTM)',
+                'LP': 'Licitación Pública (1.000 - 5.000 UTM)',
+                'LR': 'Licitación Pública (> 5.000 UTM)',
+                'LS': 'Servicios Especializados/Arquitectura',
+                'O1': 'Licitación Pública (Obras)',
+                'O2': 'Licitación Privada (Obras)', // Cambio aplicado
+                'E2': 'Licitación Privada (< 100 UTM)',
+                'CO': 'Licitación Privada (100 - 1.000 UTM)',
+                'B2': 'Licitación Privada (1.000 - 5.000 UTM)',
+                'I2': 'Licitación Privada (> 5.000 UTM)'
+            };
+
+            // Procesamiento de Datos del Excel vía JSON
+            const processJsonData = (jsonArray) => {
+                if (!Array.isArray(jsonArray)) return [];
+
+                const parseDateString = (dateStr) => {
+                    if (!dateStr) return null;
+                    let s = String(dateStr).trim().replace(/^"|"$/g, '');
+                    
+                    if (!isNaN(s) && s.trim() !== '') return new Date((parseFloat(s) - 25569) * 86400000);
+
+                    Object.entries(SHORT_MONTHS).forEach(([k, v]) => { if (s.toLowerCase().includes(k)) s = s.toLowerCase().replace(k, (v + 1).toString()); });
+                    
+                    const parts = s.split(/[ T]/);
+                    const datePart = parts[0];
+                    const timePart = parts.length > 1 ? parts[1] : '00:00:00';
+
+                    const p = datePart.split(/[\/\-\.]/);
+                    if (p.length >= 3) {
+                        const v0 = parseInt(p[0]), v1 = parseInt(p[1]), v2 = parseInt(p[2]);
+                        let y, m, d;
+                        if (v0 > 1000) { y = v0; m = v1 - 1; d = v2; }
+                        else { y = v2; m = v1 - 1; d = v0; }
+                        
+                        const t = timePart.split(':');
+                        const hh = parseInt(t[0] || 0), mm = parseInt(t[1] || 0), ss = parseInt(t[2] || 0);
+
+                        return new Date(y, m, d, hh, mm, ss);
+                    }
+                    const dt = new Date(s);
+                    return isNaN(dt.getTime()) ? null : dt;
+                };
+
+                const now = new Date(); // Fecha y hora actual
+
+                return jsonArray.map(item => {
+                    const find = (keys) => {
+                        const itemKeys = Object.keys(item);
+                        for (let k of keys) {
+                            const exactMatch = itemKeys.find(ok => ok.trim().toLowerCase() === k.toLowerCase());
+                            if (exactMatch && item[exactMatch] !== null && item[exactMatch] !== undefined) return String(item[exactMatch]).trim();
+                        }
+                        for (let k of keys) {
+                            const partialMatch = itemKeys.find(ok => ok.toLowerCase().includes(k.toLowerCase()));
+                            if (partialMatch && item[partialMatch] !== null && item[partialMatch] !== undefined) return String(item[partialMatch]).trim();
+                        }
+                        return '';
+                    };
+
+                    const id = find(['Código', 'Codigo', 'Numero', 'Nº', 'ID Licitacion', 'ID']) || 'S/N';
+                    const nombre = find(['Nombre', 'Título', 'Titulo']) || 'Licitación sin Nombre';
+                    
+                    if (nombre === 'Licitación sin Nombre' && id === 'S/N') return null;
+                    
+                    const organismo = find(['Organismo', 'Institución', 'Institucion']) || 'N/A';
+                    const descripcion = find(['Descripcion', 'Descripción']) || 'Sin descripción';
+                    const link = find(['Link', 'Enlace', 'Url', 'URL']) || '#';
+
+                    // Extraer Tipo desde el ID buscando la sigla
+                    let tipoIdentificado = 'Otro Tipo de Licitación';
+                    const idUpper = id.toUpperCase();
+                    for (const sigla of Object.keys(mapTipos)) {
+                        if (idUpper.includes(`-${sigla}`)) {
+                            tipoIdentificado = mapTipos[sigla];
+                            break;
+                        }
+                    }
+
+                    const fechaPubStr = find(['Fecha Publicacion', 'Fecha Publicación', 'Publicacion']);
+                    const fechaCierreStr = find(['Fecha Cierre', 'Cierre']);
+
+                    // FECHA DE PUBLICACIÓN
+                    let anioPub = 'N/A', mesPub = 'N/A', timestamp = 0;
+                    let fechaPubObj = parseDateString(fechaPubStr);
+                    let fechaPubFormat = fechaPubStr;
+                    
+                    if (fechaPubObj && !isNaN(fechaPubObj.getTime()) && fechaPubObj.getFullYear() > 1900) {
+                        anioPub = fechaPubObj.getFullYear().toString(); 
+                        mesPub = MONTH_NAMES[fechaPubObj.getMonth()]; 
+                        timestamp = fechaPubObj.getTime();
+                        fechaPubFormat = `${String(fechaPubObj.getDate()).padStart(2, '0')}/${String(fechaPubObj.getMonth() + 1).padStart(2, '0')}/${fechaPubObj.getFullYear()}`;
+                    }
+
+                    // FECHA DE CIERRE (Se utiliza para ocultar cerradas y para ordenar)
+                    let anioCierre = 'N/A', mesCierre = 'N/A';
+                    let fechaCierreFormat = fechaCierreStr;
+                    let fechaCierreObj = parseDateString(fechaCierreStr);
+                    let timestampCierre = Infinity; 
+
+                    if (fechaCierreObj && !isNaN(fechaCierreObj.getTime()) && fechaCierreObj.getFullYear() > 1900) {
+                        
+                        // REGLA ESTRICTA: SI YA PASÓ LA FECHA Y HORA DE CIERRE, SE DESCARTA EL REGISTRO
+                        if (fechaCierreObj < now) {
+                            return null;
+                        }
+
+                        anioCierre = fechaCierreObj.getFullYear().toString();
+                        mesCierre = MONTH_NAMES[fechaCierreObj.getMonth()];
+                        timestampCierre = fechaCierreObj.getTime();
+                        
+                        const hh = String(fechaCierreObj.getHours()).padStart(2, '0');
+                        const mm = String(fechaCierreObj.getMinutes()).padStart(2, '0');
+                        fechaCierreFormat = `${String(fechaCierreObj.getDate()).padStart(2, '0')}/${String(fechaCierreObj.getMonth() + 1).padStart(2, '0')}/${fechaCierreObj.getFullYear()} ${hh}:${mm}`;
+                    }
+
+                    return { 
+                        id, nombre, organismo, descripcion, link, 
+                        tipo: tipoIdentificado,
+                        fechaPub: fechaPubStr, fechaPubFormat, anioPub, mesPub,
+                        fechaCierre: fechaCierreStr, fechaCierreFormat, anioCierre, mesCierre,
+                        timestampCierre
+                    };
+                }).filter(Boolean); // Elimina todos los "null" (las que ya cerraron)
+            };
+
+            useEffect(() => {
+                const fetchData = async () => {
+                    setLoading(true); setError(null);
+                    try {
+                        const response = await fetch(POWER_AUTOMATE_URL, {
+                            method: 'GET',
+                            headers: { 'Accept': 'application/json' }
+                        });
+
+                        if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+                        const textData = await response.text();
+                        
+                        let jsonData;
+                        try { jsonData = JSON.parse(textData); } 
+                        catch (parseError) { throw new Error("Power Automate no devolvió un formato JSON válido."); }
+                        
+                        let jsonArray = [];
+                        if (Array.isArray(jsonData)) jsonArray = jsonData;
+                        else if (jsonData && Array.isArray(jsonData.value)) jsonArray = jsonData.value;
+                        else if (jsonData && jsonData.body && Array.isArray(jsonData.body)) jsonArray = jsonData.body;
+                        else if (typeof jsonData === 'object') {
+                            const possibleArray = Object.values(jsonData).find(val => Array.isArray(val));
+                            if (possibleArray) jsonArray = possibleArray;
+                        }
+
+                        if (jsonArray.length === 0) throw new Error('El flujo devolvió datos vacíos o sin formato tabular.');
+
+                        const processed = processJsonData(jsonArray);
+                        setData(processed); 
+                        setIsLive(true); 
+
+                    } catch (e) {
+                        console.error("Error obteniendo datos:", e);
+                        // Mock de error 
+                        setData(processJsonData([{
+                            "ID": "4451-38-O226", "Nombre": "Error de Conexión o Datos", "Organismo": "Sistema", "Fecha Publicacion": "01/01/2026", "Fecha Cierre": "01/01/2030"
+                        }])); 
+                        setIsLive(false); 
+                        setError(e.message); 
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                fetchData();
+            }, []);
+
+            useEffect(() => { setCurrentPage(1); }, [selectedOrganismos, selectedTipos, selectedPeriodsPub, selectedPeriodsCierre, searchTerm]);
+
+            const getFilteredData = (ignoreType) => {
+                return data.filter(d => {
+                    if (ignoreType !== 'organismo' && selectedOrganismos.length > 0 && !selectedOrganismos.includes(d.organismo)) return false;
+                    if (ignoreType !== 'tipo' && selectedTipos.length > 0 && !selectedTipos.includes(d.tipo)) return false;
+                    
+                    if (ignoreType !== 'periodoPub' && Object.keys(selectedPeriodsPub).length > 0) { 
+                        const ms = selectedPeriodsPub[d.anioPub]; if (!ms || !ms.includes(d.mesPub)) return false; 
+                    }
+                    if (ignoreType !== 'periodoCierre' && Object.keys(selectedPeriodsCierre).length > 0) { 
+                        const ms = selectedPeriodsCierre[d.anioCierre]; if (!ms || !ms.includes(d.mesCierre)) return false; 
+                    }
+                    
+                    if (searchTerm && !d.nombre.toLowerCase().includes(searchTerm.toLowerCase()) && !d.id.toLowerCase().includes(searchTerm.toLowerCase()) && !d.organismo.toLowerCase().includes(searchTerm.toLowerCase())) return false;
+                    return true;
+                });
+            };
+
+            const organismos = useMemo(() => { const subset = getFilteredData('organismo'); return [...new Set(subset.map(d => d.organismo))].sort(); }, [data, selectedTipos, selectedPeriodsPub, selectedPeriodsCierre, searchTerm]);
+            const tiposUnicos = useMemo(() => { const subset = getFilteredData('tipo'); return [...new Set(subset.map(d => d.tipo))].sort(); }, [data, selectedOrganismos, selectedPeriodsPub, selectedPeriodsCierre, searchTerm]);
+            const dataForPeriodsPub = useMemo(() => getFilteredData('periodoPub'), [data, selectedOrganismos, selectedTipos, selectedPeriodsCierre, searchTerm]);
+            const dataForPeriodsCierre = useMemo(() => getFilteredData('periodoCierre'), [data, selectedOrganismos, selectedTipos, selectedPeriodsPub, searchTerm]);
+            
+            const filtered = useMemo(() => getFilteredData('none'), [data, selectedOrganismos, selectedTipos, selectedPeriodsPub, selectedPeriodsCierre, searchTerm]);
+
+            // ORDEN ASCENDENTE: Las más cercanas a cerrar aparecen primero
+            const sortedData = useMemo(() => [...filtered].sort((a, b) => a.timestampCierre - b.timestampCierre), [filtered]);
+            
+            const totalPages = Math.ceil(sortedData.length / itemsPerPage);
+            const paginatedData = sortedData.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
+            const handlePrevPage = () => setCurrentPage(prev => Math.max(prev - 1, 1));
+            const handleNextPage = () => setCurrentPage(prev => Math.min(prev + 1, totalPages));
+
+            const countOrganismos = new Set(filtered.map(d => d.organismo)).size;
+
+            return (
+                <div className="flex flex-col h-screen bg-slate-50 overflow-hidden font-sans">
+                    
+                    {/* TOP HEADER MENU */}
+                    <header className="bg-brand text-white border-b border-indigo-900/50 flex flex-col md:flex-row items-center justify-between px-6 py-4 z-20 shrink-0 shadow-md relative">
+                        <div className="flex items-center gap-4 mb-3 md:mb-0 w-full md:w-auto">
+                            <div className="bg-white p-1.5 rounded-xl shadow-lg shadow-indigo-500/30 ring-1 ring-white/10 h-10 w-10 flex items-center justify-center overflow-hidden">
+                                <img src="https://cchc.cl/documents/431409/0/logoCChC.png/002fea99-2039-beec-02a7-a92335532d6f?t=1695346405910" alt="CChC Logo" className="w-full h-full object-contain" />
+                            </div>
+                            <div>
+                                <h1 className="font-bold text-lg leading-tight tracking-tight">Visualizador de Licitaciones</h1>
+                                <p className="text-xs text-indigo-200 font-medium tracking-wide">Región del Maule</p>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
+                            <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900/40 rounded-lg">
+                                {isLive ? <Wifi size={14} className="text-emerald-400" /> : <WifiOff size={14} className="text-red-400" />}
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-100">{isLive ? 'Conectado' : error ? 'Error API' : 'Demo'}</span>
+                            </div>
+                            <button onClick={onBack} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-xl transition-colors shadow-sm">
+                                <ArrowLeft size={16} /> <span className="hidden sm:inline">Volver</span>
+                            </button>
+                        </div>
+                    </header>
+
+                    {/* MAIN CONTENT */}
+                    <main className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar scroll-smooth relative">
+                        <div className="max-w-7xl mx-auto space-y-5">
+                            
+                            {error && (
+                                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-3 animate-fade-in">
+                                    <WifiOff size={20} /><div><p className="font-bold text-sm">Aviso de conexión</p><p className="text-xs">{error}</p></div>
+                                </div>
+                            )}
+
+                            {loading ? (
+                                <div className="space-y-6 animate-fade-in">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6"><SkeletonCard /><SkeletonCard /></div>
+                                    <SkeletonTable />
+                                </div>
+                            ) : (
+                                <>
+                                    {/* SECCIÓN KPIs */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <KPICard title="Licitaciones Activas" value={new Intl.NumberFormat('es-CL').format(filtered.length)} subtext={filtered.length === data.length ? "Vigentes en base de datos" : "Vigentes en esta búsqueda"} icon={Activity} bgClass="bg-emerald-50" colorClass="text-emerald-600" delay={0} />
+                                        <KPICard title="Organismos Mandantes" value={countOrganismos} subtext="Instituciones involucradas" icon={Users} bgClass="bg-purple-50" colorClass="text-purple-600" delay={100} />
+                                    </div>
+
+                                    {/* CAJA DE FILTROS COLAPSABLE (z-30 añadido para evitar corte con la tabla) */}
+                                    <div className="relative z-30 bg-white rounded-2xl shadow-soft border border-slate-200 transition-all duration-300 animate-fade-in" style={{ animationDelay: '200ms' }}>
+                                        <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/50 transition-colors rounded-t-2xl" onClick={() => setShowFilters(!showFilters)}>
+                                            <div className="flex items-center gap-3">
+                                                <div className="bg-indigo-50 p-2 rounded-lg text-indigo-600"><SlidersHorizontal size={18} /></div>
+                                                <div>
+                                                    <h3 className="font-bold text-slate-700">Filtros y Segmentadores</h3>
+                                                    <p className="text-xs text-slate-500">Refina los resultados de la tabla inferior</p>
+                                                </div>
+                                            </div>
+                                            <div className="flex items-center gap-4">
+                                                <div className="flex items-center bg-slate-100 rounded-lg px-3 py-1.5 border border-transparent focus-within:border-indigo-300 focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100 transition-all" onClick={(e) => e.stopPropagation()}>
+                                                    <Search size={16} className="text-slate-400 mr-2" />
+                                                    <input type="text" placeholder="Buscar ID o nombre..." className="bg-transparent border-none outline-none text-sm w-full md:w-48 text-slate-700 placeholder-slate-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                                                </div>
+                                                <div className="text-slate-400 hover:text-indigo-600 bg-slate-100 hover:bg-indigo-50 p-1.5 rounded-lg transition-colors">
+                                                    {showFilters ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        
+                                        {showFilters && (
+                                            <div className="px-5 pb-5 pt-2 border-t border-slate-100 bg-slate-50/30 rounded-b-2xl">
+                                                <div className="flex items-center justify-between mb-3">
+                                                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ajustes Activos</span>
+                                                    {(selectedOrganismos.length > 0 || selectedTipos.length > 0 || Object.keys(selectedPeriodsPub).length > 0 || Object.keys(selectedPeriodsCierre).length > 0) && (
+                                                        <button onClick={() => { setSelectedOrganismos([]); setSelectedTipos([]); setSelectedPeriodsPub({}); setSelectedPeriodsCierre({}); }} className="text-xs font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 px-2 py-1 rounded transition-colors">Limpiar Todos</button>
+                                                    )}
+                                                </div>
+                                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                                    <MultiSelect label="Tipo de Licitación" options={tiposUnicos} selected={selectedTipos} onChange={setSelectedTipos} icon={Tags} />
+                                                    <MultiSelect label="Organismo Mandante" options={organismos} selected={selectedOrganismos} onChange={setSelectedOrganismos} icon={Building2} />
+                                                    <PeriodSelector label="Periodo Publicación" data={dataForPeriodsPub} selectedPeriods={selectedPeriodsPub} onChange={setSelectedPeriodsPub} yearKey="anioPub" monthKey="mesPub" icon={Calendar} />
+                                                    <PeriodSelector label="Periodo de Cierre" data={dataForPeriodsCierre} selectedPeriods={selectedPeriodsCierre} onChange={setSelectedPeriodsCierre} yearKey="anioCierre" monthKey="mesCierre" icon={Clock} />
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* TABLA DE DATOS */}
+                                    <div className="relative z-10 bg-white rounded-2xl shadow-soft border border-slate-200 flex flex-col overflow-hidden animate-fade-in" style={{ animationDelay: '300ms' }}>
+                                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-white">
+                                            <div>
+                                                <h3 className="font-bold text-slate-800 text-lg">Detalle de Registros</h3>
+                                            </div>
+                                            <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-lg shadow-sm">{filtered.length} Resultados</span>
+                                        </div>
+                                        
+                                        {/* ENVOLTORIO RESPONSIVE CON MIN-WIDTH */}
+                                        <div className="overflow-x-auto custom-scrollbar pb-2">
+                                            <table className="w-full min-w-[950px] text-sm text-left table-fixed">
+                                                <thead className="bg-slate-50/80 text-slate-500 font-semibold border-b border-slate-200 text-xs uppercase tracking-wider">
+                                                    <tr>
+                                                        <th className="px-4 py-3 pl-6 w-[40%]">ID / Licitación</th>
+                                                        <th className="px-4 py-3 w-[25%]">Organismo</th>
+                                                        <th className="px-4 py-3 w-[12%] text-center">Estado</th>
+                                                        <th className="px-4 py-3 w-[13%]">Fechas <span className="block text-[9px] text-slate-400 font-normal normal-case mt-0.5">Pub. / Cierre</span></th>
+                                                        <th className="px-4 py-3 text-center pr-6 w-[10%]">Acción</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {paginatedData.length === 0 ? (
+                                                        <tr><td colSpan="5" className="px-6 py-10 text-center text-slate-400 font-medium">No se encontraron licitaciones con los filtros aplicados.</td></tr>
+                                                    ) : (
+                                                        paginatedData.map((d, idx) => (
+                                                            <tr key={idx} className="hover:bg-indigo-50/30 transition-colors">
+                                                                <td className="px-4 py-3 pl-6 align-top">
+                                                                    <div className="flex items-center gap-2 mb-1.5">
+                                                                        <span className="text-xs font-mono font-bold text-indigo-600">{d.id}</span>
+                                                                        <span className="text-[9px] font-bold uppercase tracking-wide bg-indigo-50 text-indigo-700 px-1.5 py-0.5 rounded border border-indigo-100 truncate" title={d.tipo}>{d.tipo}</span>
+                                                                    </div>
+                                                                    <div className="font-medium text-slate-700 line-clamp-2" title={d.nombre}>{d.nombre}</div>
+                                                                    <div className="text-[10px] text-slate-500 mt-1 line-clamp-1" title={d.descripcion}>{d.descripcion}</div>
+                                                                </td>
+                                                                <td className="px-4 py-3 text-slate-600 align-top">
+                                                                    <div className="text-xs bg-slate-50 px-2 py-1.5 rounded border border-slate-100 line-clamp-3" title={d.organismo}>{d.organismo}</div>
+                                                                </td>
+                                                                <td className="px-4 py-3 align-top text-center">
+                                                                    <span className="inline-flex items-center px-2 py-1 rounded text-[10px] font-bold border whitespace-nowrap bg-emerald-50 text-emerald-700 border-emerald-200">
+                                                                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></div>
+                                                                        Publicada
+                                                                    </span>
+                                                                </td>
+                                                                <td className="px-4 py-3 align-top">
+                                                                    <div className="space-y-1.5 text-xs">
+                                                                        <div className="flex flex-col"><span className="text-[9px] text-slate-400 uppercase font-bold">Publicación</span> <span className="font-medium text-slate-700">{d.fechaPubFormat || '-'}</span></div>
+                                                                        <div className="flex flex-col"><span className="text-[9px] text-indigo-400 uppercase font-bold">Cierre</span> <span className="font-bold text-indigo-700">{d.fechaCierreFormat || '-'}</span></div>
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-4 py-3 pr-6 text-center align-middle">
+                                                                    {d.link && d.link !== '#' ? (
+                                                                        <a href={d.link} target="_blank" rel="noopener noreferrer" className="inline-flex items-center justify-center gap-1.5 w-full bg-white border border-slate-200 hover:border-indigo-400 hover:text-indigo-600 text-slate-600 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-sm group">
+                                                                            <span>Ver Enlace</span>
+                                                                            <ArrowUpRight size={14} className="text-slate-400 group-hover:text-indigo-500 transition-colors" />
+                                                                        </a>
+                                                                    ) : (
+                                                                        <span className="text-xs text-slate-400 italic">No disponible</span>
+                                                                    )}
+                                                                </td>
+                                                            </tr>
+                                                        ))
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        
+                                        {/* Paginación */}
+                                        {filtered.length > itemsPerPage && (
+                                            <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                                                <button onClick={handlePrevPage} disabled={currentPage === 1} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all border shadow-sm ${currentPage === 1 ? 'text-slate-400 bg-slate-100 border-transparent cursor-not-allowed' : 'text-slate-700 bg-white border-slate-200 hover:border-indigo-300 hover:text-indigo-600'}`}><ChevronLeft size={16} /> Anterior</button>
+                                                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Página <span className="text-indigo-700 font-bold text-sm bg-white border border-slate-200 px-2 py-0.5 rounded ml-1 mr-1">{currentPage}</span> de {totalPages}</span>
+                                                <button onClick={handleNextPage} disabled={currentPage === totalPages} className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all border shadow-sm ${currentPage === totalPages ? 'text-slate-400 bg-slate-100 border-transparent cursor-not-allowed' : 'text-slate-700 bg-white border-slate-200 hover:border-indigo-300 hover:text-indigo-600'}`}>Siguiente <ChevronRight size={16} /></button>
+                                            </div>
+                                        )}
+                                    </div>
+                                </>
+                            )}
+                            <div className="h-10"></div>
+                        </div>
+                    </main>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [view, setView] = useState('landing');
+            return (
+                <>
+                    {view === 'landing' ? (
+                        <LandingPage onEnter={() => setView('dashboard')} />
+                    ) : (
+                        <Dashboard onBack={() => setView('landing')} />
+                    )}
+                </>
+            );
+        };
+
+        const root = createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
