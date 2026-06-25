@@ -53,6 +53,8 @@
             "react": "https://esm.sh/react@18.2.0",
             "react-dom": "https://esm.sh/react-dom@18.2.0",
             "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
+            "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
+            "react/jsx-dev-runtime": "https://esm.sh/react@18.2.0/jsx-dev-runtime",
             "lucide-react": "https://esm.sh/lucide-react@0.263.1?deps=react@18.2.0,react-dom@18.2.0"
         }
     }
@@ -325,7 +327,7 @@
                 'LR': 'Licitación Pública (> 5.000 UTM)',
                 'LS': 'Servicios Especializados/Arquitectura',
                 'O1': 'Licitación Pública (Obras)',
-                'O2': 'Licitación Privada (Obras)', // Cambio aplicado
+                'O2': 'Licitación Privada (Obras)',
                 'E2': 'Licitación Privada (< 100 UTM)',
                 'CO': 'Licitación Privada (100 - 1.000 UTM)',
                 'B2': 'Licitación Privada (1.000 - 5.000 UTM)',
@@ -364,7 +366,7 @@
                     return isNaN(dt.getTime()) ? null : dt;
                 };
 
-                const now = new Date(); // Fecha y hora actual
+                const now = new Date();
 
                 return jsonArray.map(item => {
                     const find = (keys) => {
@@ -389,7 +391,6 @@
                     const descripcion = find(['Descripcion', 'Descripción']) || 'Sin descripción';
                     const link = find(['Link', 'Enlace', 'Url', 'URL']) || '#';
 
-                    // Extraer Tipo desde el ID buscando la sigla
                     let tipoIdentificado = 'Otro Tipo de Licitación';
                     const idUpper = id.toUpperCase();
                     for (const sigla of Object.keys(mapTipos)) {
@@ -402,7 +403,6 @@
                     const fechaPubStr = find(['Fecha Publicacion', 'Fecha Publicación', 'Publicacion']);
                     const fechaCierreStr = find(['Fecha Cierre', 'Cierre']);
 
-                    // FECHA DE PUBLICACIÓN
                     let anioPub = 'N/A', mesPub = 'N/A', timestamp = 0;
                     let fechaPubObj = parseDateString(fechaPubStr);
                     let fechaPubFormat = fechaPubStr;
@@ -414,15 +414,12 @@
                         fechaPubFormat = `${String(fechaPubObj.getDate()).padStart(2, '0')}/${String(fechaPubObj.getMonth() + 1).padStart(2, '0')}/${fechaPubObj.getFullYear()}`;
                     }
 
-                    // FECHA DE CIERRE (Se utiliza para ocultar cerradas y para ordenar)
                     let anioCierre = 'N/A', mesCierre = 'N/A';
                     let fechaCierreFormat = fechaCierreStr;
                     let fechaCierreObj = parseDateString(fechaCierreStr);
                     let timestampCierre = Infinity; 
 
                     if (fechaCierreObj && !isNaN(fechaCierreObj.getTime()) && fechaCierreObj.getFullYear() > 1900) {
-                        
-                        // REGLA ESTRICTA: SI YA PASÓ LA FECHA Y HORA DE CIERRE, SE DESCARTA EL REGISTRO
                         if (fechaCierreObj < now) {
                             return null;
                         }
@@ -443,7 +440,7 @@
                         fechaCierre: fechaCierreStr, fechaCierreFormat, anioCierre, mesCierre,
                         timestampCierre
                     };
-                }).filter(Boolean); // Elimina todos los "null" (las que ya cerraron)
+                }).filter(Boolean);
             };
 
             useEffect(() => {
@@ -479,7 +476,6 @@
 
                     } catch (e) {
                         console.error("Error obteniendo datos:", e);
-                        // Mock de error 
                         setData(processJsonData([{
                             "ID": "4451-38-O226", "Nombre": "Error de Conexión o Datos", "Organismo": "Sistema", "Fecha Publicacion": "01/01/2026", "Fecha Cierre": "01/01/2030"
                         }])); 
@@ -518,7 +514,6 @@
             
             const filtered = useMemo(() => getFilteredData('none'), [data, selectedOrganismos, selectedTipos, selectedPeriodsPub, selectedPeriodsCierre, searchTerm]);
 
-            // ORDEN ASCENDENTE: Las más cercanas a cerrar aparecen primero
             const sortedData = useMemo(() => [...filtered].sort((a, b) => a.timestampCierre - b.timestampCierre), [filtered]);
             
             const totalPages = Math.ceil(sortedData.length / itemsPerPage);
@@ -577,7 +572,7 @@
                                         <KPICard title="Organismos Mandantes" value={countOrganismos} subtext="Instituciones involucradas" icon={Users} bgClass="bg-purple-50" colorClass="text-purple-600" delay={100} />
                                     </div>
 
-                                    {/* CAJA DE FILTROS COLAPSABLE (z-30 añadido para evitar corte con la tabla) */}
+                                    {/* CAJA DE FILTROS COLAPSABLE */}
                                     <div className="relative z-30 bg-white rounded-2xl shadow-soft border border-slate-200 transition-all duration-300 animate-fade-in" style={{ animationDelay: '200ms' }}>
                                         <div className="px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 cursor-pointer hover:bg-slate-50/50 transition-colors rounded-t-2xl" onClick={() => setShowFilters(!showFilters)}>
                                             <div className="flex items-center gap-3">
@@ -625,7 +620,6 @@
                                             <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1.5 rounded-lg shadow-sm">{filtered.length} Resultados</span>
                                         </div>
                                         
-                                        {/* ENVOLTORIO RESPONSIVE CON MIN-WIDTH */}
                                         <div className="overflow-x-auto custom-scrollbar pb-2">
                                             <table className="w-full min-w-[950px] text-sm text-left table-fixed">
                                                 <thead className="bg-slate-50/80 text-slate-500 font-semibold border-b border-slate-200 text-xs uppercase tracking-wider">
